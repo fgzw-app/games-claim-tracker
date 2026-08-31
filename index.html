@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0f172a" />
   
-  <link rel="manifest" href="manifest.json?v=2" />
+  <link rel="manifest" href="manifest.json?v=3" />
   <link rel="apple-touch-icon" href="icon-192-v2.png" />
   <link rel="icon" type="image/png" href="icon-192-v2.png" />
 
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FreeGameTracker" />
   <title>Free Loot Tracker | Steam & Epic Only</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -110,7 +113,6 @@
         if (!res.ok) throw new Error("API status " + res.status);
         const data = await res.json();
         
-        // Strict filter: Exclude any giveaways that are not Steam or Epic
         const rawGames = Array.isArray(data) ? data : [];
         steamAndEpicGames = rawGames.filter(g => isSteamOrEpic(g.platforms));
 
@@ -139,7 +141,7 @@
         const plat = (game.platforms || '').toLowerCase();
         if (currentFilter === 'epic') return plat.includes('epic');
         if (currentFilter === 'steam') return plat.includes('steam');
-        return true; // 'all' shows both Steam and Epic
+        return true;
       });
 
       document.getElementById('gameCount').textContent = `${filtered.length} free game${filtered.length === 1 ? '' : 's'} on Steam & Epic`;
