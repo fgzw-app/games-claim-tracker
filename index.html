@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#0f172a" />
   
-<link rel="manifest" href="manifest.json?v=2" />
-<link rel="apple-touch-icon" href="icon-192-v2.png" />
-<link rel="icon" type="image/png" href="icon-192-v2.png" />
-  
-  <title>Free Loot Tracker | Steam & Epic</title>
+  <link rel="manifest" href="manifest.json?v=2" />
+  <link rel="apple-touch-icon" href="icon-192-v2.png" />
+  <link rel="icon" type="image/png" href="icon-192-v2.png" />
+
+  <title>Free Loot Tracker | Steam & Epic Only</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <style>
@@ -37,24 +37,24 @@
     <!-- Test Notification Trigger Banner -->
     <div class="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 mb-4 flex items-center justify-between">
       <div>
-        <p class="text-xs font-semibold text-indigo-200">Test Your Alerts</p>
-        <p class="text-[11px] text-slate-400">Triggers a test notification in 3 seconds.</p>
+        <p class="text-xs font-semibold text-indigo-200">Test Alerts</p>
+        <p class="text-[11px] text-slate-400">Triggers an alert test in 3 seconds.</p>
       </div>
       <button onclick="triggerTestNotification()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow transition">
         <i class="fa-solid fa-paper-plane text-[10px]"></i> Send Test
       </button>
     </div>
 
-    <!-- Platform Filter Tabs -->
+    <!-- Platform Filter Tabs (Steam & Epic Only) -->
     <div class="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs font-medium mb-4">
-      <button onclick="filterPlatform('all')" id="tab-all" class="filter-tab flex-1 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition">All</button>
+      <button onclick="filterPlatform('all')" id="tab-all" class="filter-tab flex-1 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition">Both (Steam & Epic)</button>
       <button onclick="filterPlatform('epic')" id="tab-epic" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Epic Games</button>
       <button onclick="filterPlatform('steam')" id="tab-steam" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Steam</button>
     </div>
 
     <!-- Status / Refresh Bar -->
     <div class="flex justify-between items-center text-xs text-slate-400 mb-3 px-1">
-      <span id="gameCount">Scanning for free games...</span>
+      <span id="gameCount">Scanning Steam & Epic...</span>
       <button onclick="fetchFreeGames(true)" class="text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
         <i class="fa-solid fa-rotate-right" id="refreshIcon"></i> Refresh
       </button>
@@ -64,42 +64,52 @@
     <div id="gamesList" class="space-y-4">
       <div class="text-center py-12 text-slate-400">
         <i class="fa-solid fa-spinner fa-spin text-2xl mb-3 text-indigo-400"></i>
-        <p class="text-sm">Fetching active free games...</p>
+        <p class="text-sm">Fetching Steam & Epic free games...</p>
       </div>
     </div>
   </main>
 
   <script>
     const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store+steam&type=game';
-    let allGames = [];
+    let steamAndEpicGames = [];
     let currentFilter = 'all';
 
     // 1. Service Worker Registration
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
         .then(() => console.log('SW Registered'))
-        .catch(err => console.log('SW registration note:', err));
+        .catch(err => console.log('SW Note:', err));
     }
 
-    // 2. Fetch free games
+    // Helper: Strict checker for Epic & Steam platforms
+    function isSteamOrEpic(platformStr) {
+      const plat = (platformStr || '').toLowerCase();
+      return plat.includes('epic') || plat.includes('steam');
+    }
+
+    // 2. Fetch & filter only Epic and Steam games
     async function fetchFreeGames(isManual = false) {
       const refreshIcon = document.getElementById('refreshIcon');
       if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
       try {
         const res = await fetch(API_URL);
-        if (!res.ok) throw new Error("API returned status " + res.status);
+        if (!res.ok) throw new Error("API status " + res.status);
         const data = await res.json();
-        allGames = Array.isArray(data) ? data : [];
+        
+        // Strict filter: Exclude any giveaways that are not Steam or Epic
+        const rawGames = Array.isArray(data) ? data : [];
+        steamAndEpicGames = rawGames.filter(g => isSteamOrEpic(g.platforms));
+
         renderGames();
-        checkForNewGiveaways(allGames);
+        checkForNewGiveaways(steamAndEpicGames);
       } catch (err) {
         console.warn("API request failed:", err);
         document.getElementById('gamesList').innerHTML = `
           <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center">
             <i class="fa-solid fa-circle-exclamation text-amber-400 text-3xl mb-3"></i>
-            <h3 class="text-sm font-semibold text-white mb-1">Live Feed Unavailable</h3>
-            <p class="text-xs text-slate-400 mb-4">Could not retrieve the live giveaways at this moment.</p>
+            <h3 class="text-sm font-semibold text-white mb-1">Feed Unavailable</h3>
+            <p class="text-xs text-slate-400 mb-4">Could not retrieve the live giveaways right now.</p>
             <button onclick="fetchFreeGames(true)" class="px-4 py-2 bg-indigo-600 text-xs text-white rounded-lg font-semibold">Try Again</button>
           </div>
         `;
@@ -111,17 +121,18 @@
     // 3. Render Game Cards
     function renderGames() {
       const container = document.getElementById('gamesList');
-      const filtered = allGames.filter(game => {
+      
+      const filtered = steamAndEpicGames.filter(game => {
         const plat = (game.platforms || '').toLowerCase();
         if (currentFilter === 'epic') return plat.includes('epic');
         if (currentFilter === 'steam') return plat.includes('steam');
-        return true;
+        return true; // 'all' shows both Steam and Epic
       });
 
-      document.getElementById('gameCount').textContent = `${filtered.length} free game${filtered.length === 1 ? '' : 's'} available`;
+      document.getElementById('gameCount').textContent = `${filtered.length} free game${filtered.length === 1 ? '' : 's'} on Steam & Epic`;
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="text-center py-12 text-slate-500">No active free games found for this platform.</div>`;
+        container.innerHTML = `<div class="text-center py-12 text-slate-500">No active free games currently found for this platform.</div>`;
         return;
       }
 
@@ -153,7 +164,7 @@
                 </span>
                 <a href="${game.open_giveaway_url}" target="_blank" rel="noopener noreferrer" 
                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md transition">
-                  Claim Game <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                  Claim on ${badgeName} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
                 </a>
               </div>
             </div>
@@ -171,16 +182,15 @@
       renderGames();
     }
 
-    // 4. Mobile Notification Sender
+    // 4. Notification Handler
     async function sendMobileNotification(title, body) {
-      // Check user preference
       const isAlertsEnabled = localStorage.getItem('app_alerts_enabled') !== 'false';
       if (!isAlertsEnabled) return;
 
       const options = {
         body: body,
-        icon: "https://cdn-icons-png.flaticon.com/512/686/686589.png",
-        badge: "https://cdn-icons-png.flaticon.com/512/686/686589.png"
+        icon: "icon-192-v2.png",
+        badge: "icon-192-v2.png"
       };
 
       try {
@@ -190,7 +200,7 @@
           return;
         }
       } catch (e) {
-        console.warn('SW notification fallback:', e);
+        console.warn('SW alert error:', e);
       }
 
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -198,27 +208,24 @@
       }
     }
 
-    // 5. Alert Toggle (On <-> Off)
     async function toggleAlerts() {
       if (!("Notification" in window)) {
         alert("This browser does not support notifications.");
         return;
       }
 
-      // If browser permission is not yet granted, request it first
       if (Notification.permission !== "granted") {
         const perm = await Notification.requestPermission();
         if (perm === "granted") {
           localStorage.setItem('app_alerts_enabled', 'true');
           updateNotificationBtn();
-          sendMobileNotification("Alerts Enabled!", "You will be notified when free games drop.");
+          sendMobileNotification("Alerts Enabled!", "You will be alerted when new Steam & Epic games drop.");
         } else {
           updateNotificationBtn();
         }
         return;
       }
 
-      // Toggle local preference
       const currentlyEnabled = localStorage.getItem('app_alerts_enabled') !== 'false';
       const newState = !currentlyEnabled;
       localStorage.setItem('app_alerts_enabled', newState ? 'true' : 'false');
@@ -226,7 +233,7 @@
       updateNotificationBtn();
 
       if (newState) {
-        sendMobileNotification("Alerts Resumed", "Free game notifications are active.");
+        sendMobileNotification("Alerts Resumed", "Steam & Epic giveaway alerts are active.");
       }
     }
 
@@ -253,7 +260,6 @@
       }
     }
 
-    // 6. Test Alert Trigger
     async function triggerTestNotification() {
       if (!("Notification" in window)) {
         alert("Notifications are not supported on this browser.");
@@ -271,9 +277,8 @@
         return;
       }
 
-      // If muted, prompt user
       if (localStorage.getItem('app_alerts_enabled') === 'false') {
-        const turnOn = confirm("Alerts are currently turned OFF in the app. Would you like to turn them back ON to test?");
+        const turnOn = confirm("Alerts are turned OFF. Turn them ON to test?");
         if (turnOn) {
           localStorage.setItem('app_alerts_enabled', 'true');
           updateNotificationBtn();
@@ -282,16 +287,16 @@
         }
       }
 
-      alert("Triggering test in 3 seconds! Minimize Chrome or lock your screen now.");
+      alert("Triggering test in 3 seconds! Minimize your browser or lock your screen now.");
       setTimeout(() => {
         sendMobileNotification(
           "🎮 Free Game Alert (Test)",
-          "Death Stranding is free on Epic Games Store! Tap to claim."
+          "This is a test notification"
         );
       }, 3000);
     }
 
-    // 7. Auto-detect new drops
+    // 5. Detect and alert ONLY on new Steam or Epic drops
     function checkForNewGiveaways(games) {
       const knownIds = JSON.parse(localStorage.getItem('known_giveaway_ids') || '[]');
       const currentIds = games.map(g => String(g.id));
@@ -300,8 +305,8 @@
         const newDrops = games.filter(g => !knownIds.includes(String(g.id)));
         newDrops.forEach(game => {
           sendMobileNotification(
-            `Free Game: ${game.title}`,
-            `Free on ${game.platforms}. Tap to claim!`
+            `Free on ${game.platforms.includes('Epic') ? 'Epic Games' : 'Steam'}: ${game.title}`,
+            `Claim it before the promotion expires!`
           );
         });
       }
