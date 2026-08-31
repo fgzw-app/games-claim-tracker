@@ -1,91 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0f172a" />
-  <title>Free Loot Tracker | Steam & Epic</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  <style>
-    body { background-color: #0b0f19; color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
-    .glass-nav { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); }
-  </style>
-</head>
-<body class="min-h-screen pb-20 flex flex-col items-center">
-
-  <!-- Mobile App Bar -->
-  <header class="sticky top-0 z-50 w-full max-w-md glass-nav border-b border-slate-800 px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <i class="fa-solid fa-gamepad text-indigo-400 text-xl"></i>
-      <h1 class="font-bold text-lg tracking-tight">FreeGame<span class="text-indigo-400">Pulse</span></h1>
-    </div>
-    <button id="notifyBtn" onclick="toggleNotifications()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
-      <i class="fa-regular fa-bell" id="bellIcon"></i>
-      <span id="notifyStatus">Enable Alerts</span>
-    </button>
-  </header>
-
-  <!-- Main Content -->
-  <main class="w-full max-w-md px-4 mt-4 flex-1">
-    
-    <!-- Test Notification Trigger Banner -->
-    <div class="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 mb-4 flex items-center justify-between">
-      <div>
-        <p class="text-xs font-semibold text-indigo-200">Test Your Alerts</p>
-        <p class="text-[11px] text-slate-400">Triggers a test notification in 3 seconds.</p>
-      </div>
-      <button onclick="triggerTestNotification()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow transition">
-        <i class="fa-solid fa-paper-plane text-[10px]"></i> Send Test
-      </button>
-    </div>
-
-    <!-- Platform Filter Tabs -->
-    <div class="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs font-medium mb-4">
-      <button onclick="filterPlatform('all')" id="tab-all" class="filter-tab flex-1 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition">All</button>
-      <button onclick="filterPlatform('epic')" id="tab-epic" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Epic Games</button>
-      <button onclick="filterPlatform('steam')" id="tab-steam" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Steam</button>
-    </div>
-
-    <!-- Status / Refresh Bar -->
-    <div class="flex justify-between items-center text-xs text-slate-400 mb-3 px-1">
-      <span id="gameCount">Scanning for free games...</span>
-      <button onclick="fetchFreeGames(true)" class="text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-        <i class="fa-solid fa-rotate-right" id="refreshIcon"></i> Refresh
-      </button>
-    </div>
-
-    <!-- Games Feed Container -->
-    <div id="gamesList" class="space-y-4">
-      <div class="animate-pulse bg-slate-900 h-64 rounded-2xl border border-slate-800"></div>
-    </div>
-  </main>
-
-  <script>
+<script>
     const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store+steam&type=game';
     let allGames = [];
     let currentFilter = 'all';
 
-    async function fetchFreeGames() {
+    // 1. Register Service Worker for Mobile Notifications
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js')
+        .then(() => console.log('Service Worker Registered Successfully'))
+        .catch(err => console.error('Service Worker Registration Failed:', err));
+    }
+
+    // 2. Fetch free games from the API
+    async function fetchFreeGames(isManual = false) {
       const refreshIcon = document.getElementById('refreshIcon');
-      refreshIcon.classList.add('fa-spin');
+      if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
       try {
         const res = await fetch(API_URL);
         const data = await res.json();
         allGames = Array.isArray(data) ? data : [];
+
         renderGames();
+        checkForNewGiveaways(allGames);
       } catch (err) {
+        console.error("Failed to load games:", err);
         document.getElementById('gamesList').innerHTML = `
           <div class="text-center py-12 text-slate-500">
             <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 text-amber-500"></i>
             <p>Could not load games. Please try again later.</p>
           </div>`;
       } finally {
-        refreshIcon.classList.remove('fa-spin');
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
       }
     }
 
+    // 3. Render Game Cards
     function renderGames() {
       const container = document.getElementById('gamesList');
       const filtered = allGames.filter(game => {
@@ -139,6 +88,7 @@
       }).join('');
     }
 
+    // 4. Platform Filter
     function filterPlatform(platform) {
       currentFilter = platform;
       document.querySelectorAll('.filter-tab').forEach(btn => {
@@ -148,15 +98,35 @@
       renderGames();
     }
 
-    // Notification Permission Handling
+    // 5. Universal Notification Dispatcher (Mobile Service Worker + Desktop Fallback)
+    async function sendMobileNotification(title, body, iconUrl) {
+      const options = {
+        body: body,
+        icon: iconUrl || "https://cdn-icons-png.flaticon.com/512/686/686589.png",
+        badge: "https://cdn-icons-png.flaticon.com/512/686/686589.png",
+        vibrate: [200, 100, 200]
+      };
+
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        registration.showNotification(title, options);
+      } else if ('Notification' in window) {
+        new Notification(title, options);
+      }
+    }
+
+    // 6. Notification Permission Handler
     async function toggleNotifications() {
       if (!("Notification" in window)) {
-        alert("This device/browser does not support Web Notifications.");
+        alert("This browser does not support notifications.");
         return;
       }
 
       const permission = await Notification.requestPermission();
       updateNotificationBtn();
+      if (permission === "granted") {
+        sendMobileNotification("Alerts Enabled!", "You'll be notified when new free games drop.");
+      }
     }
 
     function updateNotificationBtn() {
@@ -171,34 +141,55 @@
       }
     }
 
-    // Test Notification Dispatcher
+    // 7. Test Alert Trigger
     async function triggerTestNotification() {
       if (!("Notification" in window)) {
         alert("Notifications are not supported on this browser.");
         return;
       }
 
-      if (Notification.permission !== "granted") {
-        const perm = await Notification.requestPermission();
+      let perm = Notification.permission;
+      if (perm !== "granted") {
+        perm = await Notification.requestPermission();
         updateNotificationBtn();
-        if (perm !== "granted") {
-          alert("Please allow notification permissions first!");
-          return;
-        }
       }
 
-      alert("Triggering test alert in 3 seconds. Minimize the app or lock your screen to see the banner!");
+      if (perm !== "granted") {
+        alert("Notification permission denied. Please allow notifications in site settings.");
+        return;
+      }
+
+      alert("Notification scheduled for 3 seconds! Minimize Chrome or lock your screen now to see the banner.");
 
       setTimeout(() => {
-        new Notification("🎮 Free Game Alert (Test)", {
-          body: "Death Stranding is currently 100% off on Epic Games Store! Tap to claim.",
-          icon: "https://cdn-icons-png.flaticon.com/512/686/686589.png"
-        });
+        sendMobileNotification(
+          "🎮 Free Game Alert (Test)",
+          "Death Stranding is 100% off on Epic Games Store! Tap to claim."
+        );
       }, 3000);
     }
 
+    // 8. Auto-check for newly released giveaways
+    function checkForNewGiveaways(games) {
+      const knownIds = JSON.parse(localStorage.getItem('known_giveaway_ids') || '[]');
+      const currentIds = games.map(g => String(g.id));
+
+      if (knownIds.length > 0 && window.Notification && Notification.permission === "granted") {
+        const newDrops = games.filter(g => !knownIds.includes(String(g.id)));
+        newDrops.forEach(game => {
+          sendMobileNotification(
+            `Free Game: ${game.title}`,
+            `Free on ${game.platforms}. Tap to claim!`,
+            game.thumbnail
+          );
+        });
+      }
+
+      localStorage.setItem('known_giveaway_ids', JSON.stringify(currentIds));
+    }
+
+    // Initial Execution
     updateNotificationBtn();
     fetchFreeGames();
+    setInterval(() => fetchFreeGames(), 15 * 60 * 1000);
   </script>
-</body>
-</html>
