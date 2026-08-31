@@ -22,7 +22,11 @@
 </head>
 <body class="min-h-screen pb-20 flex flex-col items-center">
 
-  <!-- Mobile App Bar -->
+  <div id="toast" class="fixed bottom-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-slate-800 text-white border border-slate-700 px-4 py-2 rounded-xl text-xs font-semibold shadow-2xl flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMsg">Link copied to clipboard!</span>
+  </div>
+
   <header class="sticky top-0 z-50 w-full max-w-md glass-nav border-b border-slate-800 px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-2">
       <img src="icon-192-v2.png" alt="Logo" class="w-6 h-6 rounded-md object-cover shadow-sm" />
@@ -34,10 +38,8 @@
     </button>
   </header>
 
-  <!-- Main Content -->
   <main class="w-full max-w-md px-4 mt-4 flex-1">
     
-    <!-- Mobile Installation Instructions (Bullet Points) -->
     <div class="mb-4 px-1">
       <p class="text-xs font-semibold text-indigo-200 mb-1.5">How to install on mobile:</p>
       <ul class="space-y-1 text-[11px] text-slate-400 list-disc list-inside leading-relaxed">
@@ -50,7 +52,6 @@
       </ul>
     </div>
 
-    <!-- Test Notification Trigger Banner -->
     <div class="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 mb-4 flex items-center justify-between">
       <div>
         <p class="text-xs font-semibold text-indigo-200">Test Alerts</p>
@@ -61,14 +62,12 @@
       </button>
     </div>
 
-    <!-- Platform Filter Tabs (Steam & Epic Only) -->
     <div class="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs font-medium mb-4">
       <button onclick="filterPlatform('all')" id="tab-all" class="filter-tab flex-1 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition">Both (Steam & Epic)</button>
       <button onclick="filterPlatform('epic')" id="tab-epic" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Epic Games</button>
       <button onclick="filterPlatform('steam')" id="tab-steam" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Steam</button>
     </div>
 
-    <!-- Status / Refresh Bar -->
     <div class="flex justify-between items-center text-xs text-slate-400 mb-3 px-1">
       <span id="gameCount">Scanning Steam & Epic...</span>
       <button onclick="fetchFreeGames(true)" class="text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
@@ -76,7 +75,6 @@
       </button>
     </div>
 
-    <!-- Games Feed Container -->
     <div id="gamesList" class="space-y-4">
       <div class="text-center py-12 text-slate-400">
         <i class="fa-solid fa-spinner fa-spin text-2xl mb-3 text-indigo-400"></i>
@@ -182,6 +180,43 @@
       };
     }
 
+    // Native Share / Clipboard Fallback Handler
+    async function shareGame(title, platform, url) {
+      const shareData = {
+        title: `Free Game: ${title}`,
+        text: `Grab "${title}" for FREE on ${platform}!`,
+        url: url
+      };
+
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+        } catch (err) {
+          if (err.name !== 'AbortError') console.warn('Share error:', err);
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(url);
+          showToast('Game link copied to clipboard!');
+        } catch (err) {
+          showToast('Could not copy link.');
+        }
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.textContent = message;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2500);
+    }
+
     // 3. Render Game Cards
     function renderGames() {
       const container = document.getElementById('gamesList');
@@ -217,6 +252,10 @@
           ? "text-amber-400 animate-pulse"
           : "text-cyan-400";
 
+        // Safe escaped strings for inline JS triggers
+        const safeTitle = (game.title || '').replace(/'/g, "\\'");
+        const safeUrl = (game.open_giveaway_url || '').replace(/'/g, "\\'");
+
         return `
           <article class="bg-slate-900 rounded-2xl border border-slate-800/80 overflow-hidden shadow-lg">
             <div class="relative">
@@ -234,7 +273,6 @@
               <p class="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">${game.description || 'Limited time giveaway.'}</p>
               
               <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-                <!-- Prominent Live Countdown Badge -->
                 <div class="timer-badge flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm ${badgeStyle}" 
                      data-target-time="${targetTimestamp}">
                   <i class="fa-solid fa-stopwatch text-xs ${iconStyle}"></i>
@@ -243,10 +281,17 @@
                   </span>
                 </div>
 
-                <a href="${game.open_giveaway_url}" target="_blank" rel="noopener noreferrer" 
-                   class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md transition">
-                  Claim on ${badgeName} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
-                </a>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="shareGame('${safeTitle}', '${badgeName}', '${safeUrl}')" 
+                          title="Share Game" 
+                          class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition flex items-center justify-center">
+                    <i class="fa-solid fa-share-nodes text-xs"></i>
+                  </button>
+                  <a href="${game.open_giveaway_url}" target="_blank" rel="noopener noreferrer" 
+                     class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md transition">
+                    Claim <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                  </a>
+                </div>
               </div>
             </div>
           </article>
