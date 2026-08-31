@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Free Loot Tracker | Steam & Epic</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    body { background-color: #0b0f19; color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
+    .glass-nav { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); }
+  </style>
+</head>
+<body class="min-h-screen pb-20 flex flex-col items-center">
+
+  <header class="sticky top-0 z-50 w-full max-w-md glass-nav border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-gamepad text-indigo-400 text-xl"></i>
+      <h1 class="font-bold text-lg tracking-tight">FreeGame<span class="text-indigo-400">Pulse</span></h1>
+    </div>
+    <button id="notifyBtn" onclick="toggleNotifications()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+      <i class="fa-regular fa-bell" id="bellIcon"></i>
+      <span id="notifyStatus">Enable Alerts</span>
+    </button>
+  </header>
+
+  <main class="w-full max-w-md px-4 mt-4 flex-1">
+    <div class="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs font-medium mb-4">
+      <button onclick="filterPlatform('all')" id="tab-all" class="filter-tab flex-1 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition">All</button>
+      <button onclick="filterPlatform('epic')" id="tab-epic" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Epic Games</button>
+      <button onclick="filterPlatform('steam')" id="tab-steam" class="filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition">Steam</button>
+    </div>
+
+    <div class="flex justify-between items-center text-xs text-slate-400 mb-3 px-1">
+      <span id="gameCount">Scanning for free games...</span>
+      <button onclick="fetchFreeGames(true)" class="text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+        <i class="fa-solid fa-rotate-right" id="refreshIcon"></i> Refresh
+      </button>
+    </div>
+
+    <div id="gamesList" class="space-y-4">
+      <div class="animate-pulse bg-slate-900 h-64 rounded-2xl border border-slate-800"></div>
+      <div class="animate-pulse bg-slate-900 h-64 rounded-2xl border border-slate-800"></div>
+    </div>
+  </main>
+
+  <script>
+    const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store+steam&type=game';
+    let allGames = [];
+    let currentFilter = 'all';
+
+    // 1. Fetch free games from the API
+    async function fetchFreeGames(isManual = false) {
+      const refreshIcon = document.getElementById('refreshIcon');
+      refreshIcon.classList.add('fa-spin');
+
+      try {
+        const res = await fetch(API_URL);
+        const data = await res.json();
+        allGames = Array.isArray(data) ? data : [];
+
+        renderGames();
+        checkForNewGiveaways(allGames, isManual);
+      } catch (err) {
+        console.error("Failed to load giveaway data:", err);
+        document.getElementById('gamesList').innerHTML = `
+          <div class="text-center py-12 text-slate-500">
+            <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 text-amber-500"></i>
+            <p>Could not load games. Please try again later.</p>
+          </div>`;
+      } finally {
+        refreshIcon.classList.remove('fa-spin');
+      }
+    }
+
+    // 2. Render game cards based on active filter
+    function renderGames() {
+      const container = document.getElementById('gamesList');
+      const filtered = allGames.filter(game => {
+        const plat = (game.platforms || '').toLowerCase();
+        if (currentFilter === 'epic') return plat.includes('epic');
+        if (currentFilter === 'steam') return plat.includes('steam');
+        return true;
+      });
+
+      document.getElementById('gameCount').textContent = `${filtered.length} free game${filtered.length === 1 ? '' : 's'} available`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-center py-12 text-slate-500">No active free games found for this platform.</div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(game => {
+        const isEpic = (game.platforms || '').toLowerCase().includes('epic');
+        const badgeColor = isEpic ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-blue-950 text-blue-300 border-blue-800';
+        const badgeIcon = isEpic ? 'fa-brands fa-neos' : 'fa-brands fa-steam';
+        const badgeName = isEpic ? 'Epic Games' : 'Steam';
+
+        return `
+          <article class="bg-slate-900 rounded-2xl border border-slate-800/80 overflow-hidden shadow-lg transition transform active:scale-[0.99]">
+            <div class="relative">
+              <img src="${game.thumbnail || game.image}" alt="${game.title}" class="w-full h-44 object-cover" loading="lazy" />
+              <div class="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 shadow-md ${badgeColor}">
+                <i class="${badgeIcon}"></i> ${badgeName}
+              </div>
+              <div class="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
+                FREE <span class="line-through opacity-70 ml-0.5">${game.worth || ''}</span>
+              </div>
+            </div>
+
+            <div class="p-4">
+              <h2 class="font-bold text-base text-white line-clamp-1">${game.title}</h2>
+              <p class="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">${game.description || 'Limited time giveaway.'}</p>
+              
+              <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+                <span class="text-[11px] text-slate-500">
+                  <i class="fa-regular fa-clock mr-1"></i>${game.end_date !== 'N/A' ? 'Limited time' : 'Claim now'}
+                </span>
+                <a href="${game.open_giveaway_url}" target="_blank" rel="noopener noreferrer" 
+                   class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md transition">
+                  Claim Game <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                </a>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    // 3. Platform filtering logic
+    function filterPlatform(platform) {
+      currentFilter = platform;
+      document.querySelectorAll('.filter-tab').forEach(btn => {
+        btn.className = 'filter-tab flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition';
+      });
+      document.getElementById(`tab-${platform}`).className = 'filter-tab flex-1 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition';
+      renderGames();
+    }
+
+    // 4. Notifications Permission & State Management
+    async function toggleNotifications() {
+      if (!("Notification" in window)) {
+        alert("This browser does not support desktop notifications.");
+        return;
+      }
+
+      if (Notification.permission === "default") {
+        const permission = await Notification.requestPermission();
+        updateNotificationBtn();
+        if (permission === "granted") {
+          new Notification("Free Game Alerts Active!", {
+            body: "You'll be alerted whenever new Epic or Steam games drop.",
+            icon: "https://cdn-icons-png.flaticon.com/512/686/686589.png"
+          });
+        }
+      } else if (Notification.permission === "denied") {
+        alert("Notifications are blocked in your browser settings. Please enable them manually.");
+      }
+    }
+
+    function updateNotificationBtn() {
+      const statusText = document.getElementById('notifyStatus');
+      const icon = document.getElementById('bellIcon');
+      if (Notification.permission === "granted") {
+        statusText.textContent = "Alerts On";
+        icon.className = "fa-solid fa-bell text-emerald-400";
+      } else {
+        statusText.textContent = "Enable Alerts";
+        icon.className = "fa-regular fa-bell";
+      }
+    }
+
+    // 5. Compare against cached IDs to trigger notifications for newly added freebies
+    function checkForNewGiveaways(games, isManual) {
+      const knownIds = JSON.parse(localStorage.getItem('known_giveaway_ids') || '[]');
+      const currentIds = games.map(g => String(g.id));
+
+      if (knownIds.length > 0 && Notification.permission === "granted") {
+        const newDrops = games.filter(g => !knownIds.includes(String(g.id)));
+        newDrops.forEach(game => {
+          new Notification(`Free Game: ${game.title}`, {
+            body: `Free on ${game.platforms}. Tap to claim now!`,
+            icon: game.thumbnail
+          });
+        });
+      }
+
+      localStorage.setItem('known_giveaway_ids', JSON.stringify(currentIds));
+    }
+
+    // Initial Load & Automatic Background Polling (Every 15 minutes)
+    updateNotificationBtn();
+    fetchFreeGames();
+    setInterval(() => fetchFreeGames(), 15 * 60 * 1000);
+  </script>
+</body>
+</html>
