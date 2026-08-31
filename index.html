@@ -34,10 +34,13 @@
   <!-- Main Content -->
   <main class="w-full max-w-md px-4 mt-4 flex-1">
     
-    <!-- Mobile Installation Instructions (Inline Paragraph) -->
-    <div class="mb-4 px-1">
+    <!-- Mobile Installation Instructions (Multi-line) -->
+    <div class="mb-4 px-1 space-y-1.5">
       <p class="text-[12px] text-slate-400 leading-relaxed">
-        <strong class="text-slate-200"><p></p>How to install on mobile:</p></strong> <p></p>On Android (Chrome/Brave), tap the menu (<i class="fa-solid fa-ellipsis-vertical text-[10px] mx-0.5"></i>) and select <span class="text-indigo-300">Install app</span> or <span class="text-indigo-300">Add to Home screen</span>.</p><p></p> On iPhone (Safari), tap <span class="text-indigo-300">Share</span> (<i class="fa-solid fa-arrow-up-from-bracket text-[10px] mx-0.5"></i>) and tap <span class="text-indigo-300">Add to Home Screen</span>.</p>
+        <strong class="text-slate-200">Android (Chrome/Brave):</strong> Tap the menu (<i class="fa-solid fa-ellipsis-vertical text-[10px] mx-0.5"></i>) and select <span class="text-indigo-300 font-medium">Install app</span> or <span class="text-indigo-300 font-medium">Add to Home screen</span>.
+      </p>
+      <p class="text-[12px] text-slate-400 leading-relaxed">
+        <strong class="text-slate-200">iPhone (iOS Safari):</strong> Tap <span class="text-indigo-300 font-medium">Share</span> (<i class="fa-solid fa-arrow-up-from-bracket text-[10px] mx-0.5"></i>) and select <span class="text-indigo-300 font-medium">Add to Home Screen</span>.
       </p>
     </div>
 
@@ -156,7 +159,7 @@
               <div class="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 shadow-md ${badgeColor}">
                 <i class="${badgeIcon}"></i> ${badgeName}
               </div>
-              <div class="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
+              <div class="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
                 FREE <span class="line-through opacity-70 ml-0.5">${game.worth || ''}</span>
               </div>
             </div>
@@ -298,7 +301,7 @@
       setTimeout(() => {
         sendMobileNotification(
           "🎮 Free Game Alert (Test)",
-          "This is a test notification, if you see this means it works!"
+          "This is a test notification"
         );
       }, 3000);
     }
