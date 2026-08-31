@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="FreeGameTracker" />
-  <title>Fab's Free Game Tracker | Steam & Epic Only</title>
+  <title>Free Loot Tracker | Steam & Epic Only</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <style>
@@ -89,6 +89,7 @@
     const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store+steam&type=game';
     let steamAndEpicGames = [];
     let currentFilter = 'all';
+    let timerInterval = null;
 
     // 1. Service Worker Registration
     if ('serviceWorker' in navigator) {
@@ -97,7 +98,6 @@
         .catch(err => console.log('SW Note:', err));
     }
 
-    // Helper: Strict checker for Epic & Steam platforms
     function isSteamOrEpic(platformStr) {
       const plat = (platformStr || '').toLowerCase();
       return plat.includes('epic') || plat.includes('steam');
@@ -133,6 +133,55 @@
       }
     }
 
+    // Robust parser for date strings across iOS & Android
+    function parseTargetDate(endDateStr, gameId) {
+      if (!endDateStr || endDateStr === 'N/A' || endDateStr.includes('0000')) {
+        const now = new Date();
+        const nextThursday = new Date();
+        nextThursday.setUTCDate(now.getUTCDate() + ((4 + 7 - now.getUTCDay()) % 7 || 7));
+        nextThursday.setUTCHours(15, 0, 0, 0);
+        return nextThursday.getTime();
+      }
+
+      const cleanStr = endDateStr.trim().replace(' ', 'T');
+      const timestamp = new Date(cleanStr).getTime() || new Date(cleanStr + 'Z').getTime();
+
+      if (!isNaN(timestamp)) {
+        return timestamp;
+      }
+
+      return Date.now() + 48 * 60 * 60 * 1000;
+    }
+
+    function calculateCountdown(targetTimestamp) {
+      const diff = targetTimestamp - Date.now();
+
+      if (diff <= 0) {
+        return { text: 'Ending soon', isUrgent: true };
+      }
+
+      const totalSec = Math.floor(diff / 1000);
+      const days = Math.floor(totalSec / 86400);
+      const hours = Math.floor((totalSec % 86400) / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+
+      const pad = (n) => String(n).padStart(2, '0');
+      const isUrgent = diff < 24 * 60 * 60 * 1000;
+
+      if (days > 0) {
+        return {
+          text: `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`,
+          isUrgent
+        };
+      }
+
+      return {
+        text: `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`,
+        isUrgent: true
+      };
+    }
+
     // 3. Render Game Cards
     function renderGames() {
       const container = document.getElementById('gamesList');
@@ -157,6 +206,17 @@
         const badgeIcon = isEpic ? 'fa-brands fa-neos' : 'fa-brands fa-steam';
         const badgeName = isEpic ? 'Epic Games' : 'Steam';
 
+        const targetTimestamp = parseTargetDate(game.end_date, game.id);
+        const timer = calculateCountdown(targetTimestamp);
+
+        const badgeStyle = timer.isUrgent 
+          ? "bg-amber-950/50 border-amber-500/50 text-amber-300"
+          : "bg-cyan-950/40 border-cyan-500/30 text-cyan-300";
+
+        const iconStyle = timer.isUrgent
+          ? "text-amber-400 animate-pulse"
+          : "text-cyan-400";
+
         return `
           <article class="bg-slate-900 rounded-2xl border border-slate-800/80 overflow-hidden shadow-lg">
             <div class="relative">
@@ -174,9 +234,15 @@
               <p class="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">${game.description || 'Limited time giveaway.'}</p>
               
               <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-                <span class="text-[11px] text-slate-500">
-                  <i class="fa-regular fa-clock mr-1"></i>${game.end_date !== 'N/A' ? 'Limited time' : 'Claim now'}
-                </span>
+                <!-- Prominent Live Countdown Badge -->
+                <div class="timer-badge flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm ${badgeStyle}" 
+                     data-target-time="${targetTimestamp}">
+                  <i class="fa-solid fa-stopwatch text-xs ${iconStyle}"></i>
+                  <span class="timer-display font-mono text-xs font-bold tracking-tight">
+                    ${timer.text}
+                  </span>
+                </div>
+
                 <a href="${game.open_giveaway_url}" target="_blank" rel="noopener noreferrer" 
                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md transition">
                   Claim on ${badgeName} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
@@ -186,6 +252,37 @@
           </article>
         `;
       }).join('');
+
+      startLiveTickers();
+    }
+
+    // 4. Live 1-second countdown loop
+    function startLiveTickers() {
+      if (timerInterval) clearInterval(timerInterval);
+
+      timerInterval = setInterval(() => {
+        const badges = document.querySelectorAll('.timer-badge');
+        badges.forEach(badge => {
+          const targetTimestamp = parseInt(badge.getAttribute('data-target-time'), 10);
+          if (!targetTimestamp) return;
+
+          const res = calculateCountdown(targetTimestamp);
+          const textSpan = badge.querySelector('.timer-display');
+          const icon = badge.querySelector('i');
+
+          if (textSpan) {
+            textSpan.textContent = res.text;
+          }
+
+          if (res.isUrgent) {
+            badge.className = "timer-badge flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm bg-amber-950/50 border-amber-500/50 text-amber-300";
+            if (icon) icon.className = "fa-solid fa-stopwatch text-xs text-amber-400 animate-pulse";
+          } else {
+            badge.className = "timer-badge flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm bg-cyan-950/40 border-cyan-500/30 text-cyan-300";
+            if (icon) icon.className = "fa-solid fa-stopwatch text-xs text-cyan-400";
+          }
+        });
+      }, 1000);
     }
 
     function filterPlatform(platform) {
@@ -197,7 +294,7 @@
       renderGames();
     }
 
-    // 4. Notification Handler
+    // 5. Notification Handler
     async function sendMobileNotification(title, body) {
       const isAlertsEnabled = localStorage.getItem('app_alerts_enabled') !== 'false';
       if (!isAlertsEnabled) return;
@@ -311,7 +408,6 @@
       }, 3000);
     }
 
-    // 5. Detect and alert ONLY on new Steam or Epic drops
     function checkForNewGiveaways(games) {
       const knownIds = JSON.parse(localStorage.getItem('known_giveaway_ids') || '[]');
       const currentIds = games.map(g => String(g.id));
