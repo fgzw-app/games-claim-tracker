@@ -1,6 +1,6 @@
 {
-  "name": "FreeGamePulse Tracker",
-  "short_name": "GamePulse",
+  "name": "FabFreeGameTracker",
+  "short_name": "FreeGameTracker",
   "description": "Claim free games on Steam & Epic Games Store.",
   "start_url": "./index.html",
   "display": "standalone",
