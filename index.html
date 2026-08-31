@@ -34,6 +34,13 @@
   <!-- Main Content -->
   <main class="w-full max-w-md px-4 mt-4 flex-1">
     
+    <!-- Mobile Installation Instructions (Inline Paragraph) -->
+    <div class="mb-4 px-1">
+      <p class="text-[12px] text-slate-400 leading-relaxed">
+        <strong class="text-slate-200">How to install on mobile:</strong> On Android (Chrome/Brave), tap the menu (<i class="fa-solid fa-ellipsis-vertical text-[10px] mx-0.5"></i>) and select <span class="text-indigo-300">Install app</span> or <span class="text-indigo-300">Add to Home screen</span>. On iPhone (Safari), tap <span class="text-indigo-300">Share</span> (<i class="fa-solid fa-arrow-up-from-bracket text-[10px] mx-0.5"></i>) and tap <span class="text-indigo-300">Add to Home Screen</span>.
+      </p>
+    </div>
+
     <!-- Test Notification Trigger Banner -->
     <div class="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 mb-4 flex items-center justify-between">
       <div>
@@ -291,7 +298,7 @@
       setTimeout(() => {
         sendMobileNotification(
           "🎮 Free Game Alert (Test)",
-          "This is a test notification"
+          "This is a test notification, if you see this means it works!"
         );
       }, 3000);
     }
