@@ -88,6 +88,7 @@
     let steamAndEpicGames = [];
     let currentFilter = 'all';
     let timerInterval = null;
+    let autoPollingInterval = null;
 
     // 1. Service Worker Registration
     if ('serviceWorker' in navigator) {
@@ -104,7 +105,7 @@
     // 2. Fetch & filter only Epic and Steam games
     async function fetchFreeGames(isManual = false) {
       const refreshIcon = document.getElementById('refreshIcon');
-      if (refreshIcon) refreshIcon.classList.add('fa-spin');
+      if (refreshIcon && isManual) refreshIcon.classList.add('fa-spin');
 
       try {
         const res = await fetch(API_URL);
@@ -118,20 +119,21 @@
         checkForNewGiveaways(steamAndEpicGames);
       } catch (err) {
         console.warn("API request failed:", err);
-        document.getElementById('gamesList').innerHTML = `
-          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center">
-            <i class="fa-solid fa-circle-exclamation text-amber-400 text-3xl mb-3"></i>
-            <h3 class="text-sm font-semibold text-white mb-1">Feed Unavailable</h3>
-            <p class="text-xs text-slate-400 mb-4">Could not retrieve the live giveaways right now.</p>
-            <button onclick="fetchFreeGames(true)" class="px-4 py-2 bg-indigo-600 text-xs text-white rounded-lg font-semibold">Try Again</button>
-          </div>
-        `;
+        if (isManual) {
+          document.getElementById('gamesList').innerHTML = `
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center">
+              <i class="fa-solid fa-circle-exclamation text-amber-400 text-3xl mb-3"></i>
+              <h3 class="text-sm font-semibold text-white mb-1">Feed Unavailable</h3>
+              <p class="text-xs text-slate-400 mb-4">Could not retrieve the live giveaways right now.</p>
+              <button onclick="fetchFreeGames(true)" class="px-4 py-2 bg-indigo-600 text-xs text-white rounded-lg font-semibold">Try Again</button>
+            </div>
+          `;
+        }
       } finally {
-        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+        if (refreshIcon && isManual) refreshIcon.classList.remove('fa-spin');
       }
     }
 
-    // Robust parser for date strings across iOS & Android
     function parseTargetDate(endDateStr, gameId) {
       if (!endDateStr || endDateStr === 'N/A' || endDateStr.includes('0000')) {
         const now = new Date();
@@ -144,10 +146,7 @@
       const cleanStr = endDateStr.trim().replace(' ', 'T');
       const timestamp = new Date(cleanStr).getTime() || new Date(cleanStr + 'Z').getTime();
 
-      if (!isNaN(timestamp)) {
-        return timestamp;
-      }
-
+      if (!isNaN(timestamp)) return timestamp;
       return Date.now() + 48 * 60 * 60 * 1000;
     }
 
@@ -252,7 +251,6 @@
           ? "text-amber-400 animate-pulse"
           : "text-cyan-400";
 
-        // Safe escaped strings for inline JS triggers
         const safeTitle = (game.title || '').replace(/'/g, "\\'");
         const safeUrl = (game.open_giveaway_url || '').replace(/'/g, "\\'");
 
@@ -263,7 +261,7 @@
               <div class="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 shadow-md ${badgeColor}">
                 <i class="${badgeIcon}"></i> ${badgeName}
               </div>
-              <div class="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
+              <div class="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
                 FREE <span class="line-through opacity-70 ml-0.5">${game.worth || ''}</span>
               </div>
             </div>
@@ -347,7 +345,8 @@
       const options = {
         body: body,
         icon: "icon-192-v2.png",
-        badge: "icon-192-v2.png"
+        badge: "icon-192-v2.png",
+        vibrate: [200, 100, 200]
       };
 
       try {
@@ -453,11 +452,13 @@
       }, 3000);
     }
 
+    // Detect and alert on new drops
     function checkForNewGiveaways(games) {
-      const knownIds = JSON.parse(localStorage.getItem('known_giveaway_ids') || '[]');
+      const rawStored = localStorage.getItem('known_giveaway_ids');
+      const knownIds = JSON.parse(rawStored || '[]');
       const currentIds = games.map(g => String(g.id));
 
-      if (knownIds.length > 0 && window.Notification && Notification.permission === "granted") {
+      if (rawStored && knownIds.length > 0 && window.Notification && Notification.permission === "granted") {
         const newDrops = games.filter(g => !knownIds.includes(String(g.id)));
         newDrops.forEach(game => {
           sendMobileNotification(
@@ -469,6 +470,19 @@
 
       localStorage.setItem('known_giveaway_ids', JSON.stringify(currentIds));
     }
+
+    // 6. Resume & Background Polling Triggers
+    // Trigger check whenever user switches back to the app or unlocks their device
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        fetchFreeGames();
+      }
+    });
+
+    // Auto-poll every 15 minutes while app is in memory
+    autoPollingInterval = setInterval(() => {
+      fetchFreeGames();
+    }, 15 * 60 * 1000);
 
     // Init
     updateNotificationBtn();
