@@ -1,0 +1,37 @@
+name: Check Free Games & Send Push
+
+on:
+  schedule:
+    - cron: '0 */4 * * *' # Checks every 4 hours automatically
+  workflow_dispatch:        # Allows manual test triggers from the Actions tab
+
+jobs:
+  check-and-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch giveaways and push alert
+        env:
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          ONESIGNAL_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
+        run: |
+          # Query GamerPower API for active Steam and Epic games
+          GAMES=$(curl -s "https://www.gamerpower.com/api/filter?platform=epic-games-store+steam&type=game")
+          
+          # Verify the API returned a valid non-empty list
+          COUNT=$(echo "$GAMES" | jq '. | length 2>/dev/null || echo 0')
+          if [ "$COUNT" -gt 0 ]; then
+            FIRST_TITLE=$(echo "$GAMES" | jq -r '.[0].title')
+            PLATFORM=$(echo "$GAMES" | jq -r '.[0].platforms')
+            
+            # Send notification via OneSignal REST API
+            curl -s -X POST "https://onesignal.com/api/v1/notifications" \
+              -H "Authorization: Basic $ONESIGNAL_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "app_id": "'"$ONESIGNAL_APP_ID"'",
+                "included_segments": ["All"],
+                "headings": {"en": "🎮 Free Game Alert!"},
+                "contents": {"en": "New freebie available: '"$FIRST_TITLE"' on '"$PLATFORM"'!"},
+                "url": "https://fgzw-app.github.io/games-claim-tracker"
+              }'
+          fi
