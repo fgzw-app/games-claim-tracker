@@ -92,7 +92,8 @@
   </main>
 
   <script>
-    const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store+steam&type=game';
+    // Dot-separated platform slugs ensure GamerPower restricts to Steam & Epic Games Store only
+    const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store.steam&type=game';
     let steamAndEpicGames = [];
     let currentFilter = 'all';
     let timerInterval = null;
@@ -116,7 +117,7 @@
           const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
           if (status.state === 'granted') {
             await swReg.periodicSync.register('check-games-sync', {
-              minInterval: 6 * 60 * 60 * 1000 // Android triggers background check every 6-12 hours
+              minInterval: 6 * 60 * 60 * 1000 // Android checks every 6-12 hours
             });
             console.log('Periodic Background Sync registered');
           }
@@ -126,6 +127,7 @@
       }
     }
 
+    // Strict platform check: discards Ubisoft, GOG, IndieGala, etc.
     function isSteamOrEpic(platformStr) {
       const plat = (platformStr || '').toLowerCase();
       return plat.includes('epic') || plat.includes('steam');
@@ -142,6 +144,7 @@
         const data = await res.json();
         
         const rawGames = Array.isArray(data) ? data : [];
+        // Enforce strict local filtering as a secondary safety guard
         steamAndEpicGames = rawGames.filter(g => isSteamOrEpic(g.platforms));
 
         renderGames();
@@ -163,7 +166,7 @@
       }
     }
 
-    // Share stored IDs with Service Worker Cache so sw.js knows what games are already seen
+    // Sync only valid Steam & Epic IDs into Cache Storage so sw.js knows what has been seen
     async function syncGameIdsWithCache(games) {
       if (!('caches' in window)) return;
       try {
@@ -409,6 +412,9 @@
     }
 
     async function sendLocalNotification(title, body) {
+      const isAlertsEnabled = localStorage.getItem('app_alerts_enabled') !== 'false';
+      if (!isAlertsEnabled) return;
+
       const options = {
         body: body,
         icon: "icon-192-v2.png",
