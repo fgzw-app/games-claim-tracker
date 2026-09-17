@@ -3,6 +3,26 @@ function isSteamOrEpic(platformStr) {
   return plat.includes('epic') || plat.includes('steam');
 }
 
+// Strict filter to discard DLCs, expansions, and item packs
+function isBaseGame(game) {
+  const type = (game.type || '').toLowerCase().trim();
+  if (type && type !== 'game') return false;
+
+  const text = `${game.title || ''} ${game.description || ''}`.toLowerCase();
+  const rejectWords = [
+    ' dlc', '(dlc', '[dlc', 'dlc ',
+    'expansion', 'add-on', 'addon', 'season pass',
+    'soundtrack', 'artbook', 'starter pack', 'bonus pack',
+    'skin pack', 'cosmetic', 'in-game content', 'loot pack',
+    'beta access', 'playtest', 'item pack'
+  ];
+
+  for (const word of rejectWords) {
+    if (text.includes(word)) return false;
+  }
+  return true;
+}
+
 // Listen for periodic background sync from Android
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'check-games-sync') {
@@ -13,10 +33,10 @@ self.addEventListener('periodicsync', (event) => {
 async function checkGamesAndNotify() {
   try {
     const timestamp = Date.now();
-    // Fetch both Steam and Epic without the restrictive &type=game filter
+    // Query GamerPower with type=game
     const [steamRes, epicRes] = await Promise.allSettled([
-      fetch(`https://www.gamerpower.com/api/giveaways?platform=steam&t=${timestamp}`),
-      fetch(`https://www.gamerpower.com/api/giveaways?platform=epic-games-store&t=${timestamp}`)
+      fetch(`https://www.gamerpower.com/api/giveaways?platform=steam&type=game&t=${timestamp}`),
+      fetch(`https://www.gamerpower.com/api/giveaways?platform=epic-games-store&type=game&t=${timestamp}`)
     ]);
 
     let steamData = [];
@@ -35,7 +55,7 @@ async function checkGamesAndNotify() {
     const combined = [...steamData, ...epicData];
     const uniqueMap = new Map();
     combined.forEach(game => {
-      if (isSteamOrEpic(game.platforms)) {
+      if (isSteamOrEpic(game.platforms) && isBaseGame(game)) {
         uniqueMap.set(game.id, game);
       }
     });
@@ -54,21 +74,21 @@ async function checkGamesAndNotify() {
     const currentIds = steamAndEpicGames.map(g => String(g.id));
     const newDrops = steamAndEpicGames.filter(g => !knownIds.includes(String(g.id)));
 
-    // Only notify if brand new Steam or Epic drops are detected
+    // Only notify if brand new base games drop
     if (knownIds.length > 0 && newDrops.length > 0) {
       const drop = newDrops[0];
       const isEpic = drop.platforms.toLowerCase().includes('epic');
       const platformName = isEpic ? 'Epic Games' : 'Steam';
 
       await self.registration.showNotification(`Free on ${platformName}: ${drop.title}`, {
-        body: 'Claim it before the promotion expires!',
+        body: '100% OFF base game. Claim before it expires!',
         icon: 'icon-192-v2.png',
         badge: 'icon-192-v2.png',
         data: { url: drop.open_giveaway_url }
       });
     }
 
-    // Save strictly Steam & Epic game IDs to cache
+    // Save only verified game IDs to cache
     await cache.put('/last-seen-ids.json', new Response(JSON.stringify(currentIds)));
   } catch (err) {
     console.error('Background check failed:', err);
