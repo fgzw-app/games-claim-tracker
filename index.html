@@ -92,8 +92,6 @@
   </main>
 
   <script>
-    // Dot-separated platform slugs ensure GamerPower restricts to Steam & Epic Games Store only
-    const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store.steam&type=game';
     let steamAndEpicGames = [];
     let currentFilter = 'all';
     let timerInterval = null;
@@ -117,7 +115,7 @@
           const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
           if (status.state === 'granted') {
             await swReg.periodicSync.register('check-games-sync', {
-              minInterval: 6 * 60 * 60 * 1000 // Android checks every 6-12 hours
+              minInterval: 6 * 60 * 60 * 1000
             });
             console.log('Periodic Background Sync registered');
           }
@@ -133,19 +131,41 @@
       return plat.includes('epic') || plat.includes('steam');
     }
 
-    // 2. Fetch & filter only Epic and Steam games
+    // 2. Fetch all 100% off sales and drops without the restrictive &type=game parameter
     async function fetchFreeGames(isManual = false) {
       const refreshIcon = document.getElementById('refreshIcon');
       if (refreshIcon && isManual) refreshIcon.classList.add('fa-spin');
 
       try {
-        const res = await fetch(API_URL);
-        if (!res.ok) throw new Error("API status " + res.status);
-        const data = await res.json();
-        
-        const rawGames = Array.isArray(data) ? data : [];
-        // Enforce strict local filtering as a secondary safety guard
-        steamAndEpicGames = rawGames.filter(g => isSteamOrEpic(g.platforms));
+        const timestamp = Date.now();
+        const [steamRes, epicRes] = await Promise.allSettled([
+          fetch(`https://www.gamerpower.com/api/giveaways?platform=steam&t=${timestamp}`),
+          fetch(`https://www.gamerpower.com/api/giveaways?platform=epic-games-store&t=${timestamp}`)
+        ]);
+
+        let steamData = [];
+        let epicData = [];
+
+        if (steamRes.status === 'fulfilled' && steamRes.value.ok) {
+          const json = await steamRes.value.json();
+          if (Array.isArray(json)) steamData = json;
+        }
+
+        if (epicRes.status === 'fulfilled' && epicRes.value.ok) {
+          const json = await epicRes.value.json();
+          if (Array.isArray(json)) epicData = json;
+        }
+
+        // Deduplicate and filter exclusively to Steam & Epic
+        const combined = [...steamData, ...epicData];
+        const uniqueMap = new Map();
+        combined.forEach(game => {
+          if (isSteamOrEpic(game.platforms)) {
+            uniqueMap.set(game.id, game);
+          }
+        });
+
+        steamAndEpicGames = Array.from(uniqueMap.values());
 
         renderGames();
         syncGameIdsWithCache(steamAndEpicGames);
@@ -166,7 +186,6 @@
       }
     }
 
-    // Sync only valid Steam & Epic IDs into Cache Storage so sw.js knows what has been seen
     async function syncGameIdsWithCache(games) {
       if (!('caches' in window)) return;
       try {
@@ -178,7 +197,7 @@
       }
     }
 
-    function parseTargetDate(endDateStr, gameId) {
+    function parseTargetDate(endDateStr) {
       if (!endDateStr || endDateStr === 'N/A' || endDateStr.includes('0000')) {
         const now = new Date();
         const nextThursday = new Date();
@@ -221,7 +240,6 @@
       };
     }
 
-    // Native Share / Clipboard Fallback Handler
     async function shareGame(title, platform, url) {
       const shareData = {
         title: `Free Game: ${title}`,
@@ -282,15 +300,15 @@
         const badgeIcon = isEpic ? 'fa-brands fa-neos' : 'fa-brands fa-steam';
         const badgeName = isEpic ? 'Epic Games' : 'Steam';
 
-        const targetTimestamp = parseTargetDate(game.end_date, game.id);
+        const targetTimestamp = parseTargetDate(game.end_date);
         const timer = calculateCountdown(targetTimestamp);
 
         const badgeStyle = timer.isUrgent 
           ? "bg-amber-950/50 border-amber-500/50 text-amber-300"
           : "bg-cyan-950/40 border-cyan-500/30 text-cyan-300";
 
-        const iconStyle = timer.isUrgent
-          ? "text-amber-400 animate-pulse"
+        const iconStyle = timer.isUrgent 
+          ? "text-amber-400 animate-pulse" 
           : "text-cyan-400";
 
         const safeTitle = (game.title || '').replace(/'/g, "\\'");
@@ -313,7 +331,6 @@
               <p class="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">${game.description || 'Limited time giveaway.'}</p>
               
               <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-                <!-- Prominent Live Countdown Badge -->
                 <div class="timer-badge flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-sm ${badgeStyle}" 
                      data-target-time="${targetTimestamp}">
                   <i class="fa-solid fa-stopwatch text-xs ${iconStyle}"></i>
@@ -322,7 +339,6 @@
                   </span>
                 </div>
 
-                <!-- Action Controls: Native Share & Claim -->
                 <div class="flex items-center gap-1.5">
                   <button onclick="shareGame('${safeTitle}', '${badgeName}', '${safeUrl}')" 
                           title="Share Game" 
@@ -343,7 +359,6 @@
       startLiveTickers();
     }
 
-    // 4. Live 1-second countdown loop
     function startLiveTickers() {
       if (timerInterval) clearInterval(timerInterval);
 
@@ -379,7 +394,6 @@
       renderGames();
     }
 
-    // 5. Native Service Worker Notification Handler
     async function toggleAlerts() {
       if (!("Notification" in window)) {
         alert("This browser does not support notifications.");
@@ -489,7 +503,6 @@
       }, 3000);
     }
 
-    // Refresh feed whenever the user returns to the app
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         fetchFreeGames();
