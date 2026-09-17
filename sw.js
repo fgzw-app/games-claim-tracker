@@ -1,6 +1,3 @@
-// Dot-separated platform slugs ensure GamerPower correctly isolates Epic and Steam
-const API_URL = 'https://www.gamerpower.com/api/filter?platform=epic-games-store.steam&type=game';
-
 function isSteamOrEpic(platformStr) {
   const plat = (platformStr || '').toLowerCase();
   return plat.includes('epic') || plat.includes('steam');
@@ -15,12 +12,35 @@ self.addEventListener('periodicsync', (event) => {
 
 async function checkGamesAndNotify() {
   try {
-    const res = await fetch(API_URL);
-    const rawGames = await res.json();
-    if (!Array.isArray(rawGames) || rawGames.length === 0) return;
+    const timestamp = Date.now();
+    // Fetch both Steam and Epic without the restrictive &type=game filter
+    const [steamRes, epicRes] = await Promise.allSettled([
+      fetch(`https://www.gamerpower.com/api/giveaways?platform=steam&t=${timestamp}`),
+      fetch(`https://www.gamerpower.com/api/giveaways?platform=epic-games-store&t=${timestamp}`)
+    ]);
 
-    // Strict safety check: only process Steam or Epic Games Store
-    const steamAndEpicGames = rawGames.filter(g => isSteamOrEpic(g.platforms));
+    let steamData = [];
+    let epicData = [];
+
+    if (steamRes.status === 'fulfilled' && steamRes.value.ok) {
+      const json = await steamRes.value.json();
+      if (Array.isArray(json)) steamData = json;
+    }
+
+    if (epicRes.status === 'fulfilled' && epicRes.value.ok) {
+      const json = await epicRes.value.json();
+      if (Array.isArray(json)) epicData = json;
+    }
+
+    const combined = [...steamData, ...epicData];
+    const uniqueMap = new Map();
+    combined.forEach(game => {
+      if (isSteamOrEpic(game.platforms)) {
+        uniqueMap.set(game.id, game);
+      }
+    });
+
+    const steamAndEpicGames = Array.from(uniqueMap.values());
     if (steamAndEpicGames.length === 0) return;
 
     // Retrieve cached list of seen game IDs
@@ -34,7 +54,7 @@ async function checkGamesAndNotify() {
     const currentIds = steamAndEpicGames.map(g => String(g.id));
     const newDrops = steamAndEpicGames.filter(g => !knownIds.includes(String(g.id)));
 
-    // Only notify if new Steam/Epic drops are detected
+    // Only notify if brand new Steam or Epic drops are detected
     if (knownIds.length > 0 && newDrops.length > 0) {
       const drop = newDrops[0];
       const isEpic = drop.platforms.toLowerCase().includes('epic');
