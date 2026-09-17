@@ -86,7 +86,7 @@
     <div id="gamesList" class="space-y-4">
       <div class="text-center py-12 text-slate-400">
         <i class="fa-solid fa-spinner fa-spin text-2xl mb-3 text-indigo-400"></i>
-        <p class="text-sm">Fetching Steam & Epic free games...</p>
+        <p class="text-sm">Fetching Steam & Epic full games...</p>
       </div>
     </div>
   </main>
@@ -125,22 +125,42 @@
       }
     }
 
-    // Strict platform check: discards Ubisoft, GOG, IndieGala, etc.
     function isSteamOrEpic(platformStr) {
       const plat = (platformStr || '').toLowerCase();
       return plat.includes('epic') || plat.includes('steam');
     }
 
-    // 2. Fetch all 100% off sales and drops without the restrictive &type=game parameter
+    // Discard any expansions, DLCs, soundtracks, skins, and item packs
+    function isBaseGame(game) {
+      const type = (game.type || '').toLowerCase().trim();
+      if (type && type !== 'game') return false;
+
+      const text = `${game.title || ''} ${game.description || ''}`.toLowerCase();
+      const rejectWords = [
+        ' dlc', '(dlc', '[dlc', 'dlc ',
+        'expansion', 'add-on', 'addon', 'season pass',
+        'soundtrack', 'artbook', 'starter pack', 'bonus pack',
+        'skin pack', 'cosmetic', 'in-game content', 'loot pack',
+        'beta access', 'playtest', 'item pack'
+      ];
+
+      for (const word of rejectWords) {
+        if (text.includes(word)) return false;
+      }
+      return true;
+    }
+
+    // 2. Fetch 100% OFF standalone games only
     async function fetchFreeGames(isManual = false) {
       const refreshIcon = document.getElementById('refreshIcon');
       if (refreshIcon && isManual) refreshIcon.classList.add('fa-spin');
 
       try {
         const timestamp = Date.now();
+        // Use type=game to automatically filter out standard in-game loot & packs
         const [steamRes, epicRes] = await Promise.allSettled([
-          fetch(`https://www.gamerpower.com/api/giveaways?platform=steam&t=${timestamp}`),
-          fetch(`https://www.gamerpower.com/api/giveaways?platform=epic-games-store&t=${timestamp}`)
+          fetch(`https://www.gamerpower.com/api/giveaways?platform=steam&type=game&t=${timestamp}`),
+          fetch(`https://www.gamerpower.com/api/giveaways?platform=epic-games-store&type=game&t=${timestamp}`)
         ]);
 
         let steamData = [];
@@ -156,11 +176,11 @@
           if (Array.isArray(json)) epicData = json;
         }
 
-        // Deduplicate and filter exclusively to Steam & Epic
+        // Deduplicate and strictly include only full standalone games on Steam & Epic
         const combined = [...steamData, ...epicData];
         const uniqueMap = new Map();
         combined.forEach(game => {
-          if (isSteamOrEpic(game.platforms)) {
+          if (isSteamOrEpic(game.platforms) && isBaseGame(game)) {
             uniqueMap.set(game.id, game);
           }
         });
@@ -321,7 +341,7 @@
               <div class="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 shadow-md ${badgeColor}">
                 <i class="${badgeIcon}"></i> ${badgeName}
               </div>
-              <div class="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
+              <div class="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500 text-slate-950 shadow-md">
                 FREE <span class="line-through opacity-70 ml-0.5">${game.worth || ''}</span>
               </div>
             </div>
@@ -406,7 +426,7 @@
           localStorage.setItem('app_alerts_enabled', 'true');
           updateNotificationBtn();
           registerPeriodicSync();
-          sendLocalNotification("Alerts Enabled!", "Your app is configured to check for Steam & Epic drops.");
+          sendLocalNotification("Alerts Enabled!", "You will be alerted when new Steam & Epic games drop.");
         } else {
           updateNotificationBtn();
         }
